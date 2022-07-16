@@ -1,0 +1,380 @@
+Date 17-12-2021
+version:1.6
+Release: FunctionalTest
+Release: No 
+
+Date 15-June-2021 
+lib version: 1.6
+    message type version: 1.4 
+            add-> : 17 (participant joined),  18 (participant left)
+    message structure version: 1.2
+    description:
+        17 (participant joined):
+
+            17 indicates new participant has joined the channel and is now online. 
+            This msg will have SID =channel.SID, channel.name, sourceID = con.ID. 
+            The library will raise an eventdbridges:participant.joined and will pass on 
+            the con.id
+
+        18 (participant left)
+            18 indicates the participant is now offline / disconnected from the channel. 
+            This msh will have SID =channel SID, channel.name, sourceID = con.ID. 
+            The library will raise an eventdbridges:participant.left and 
+            will pass on the con.id
+
+        update in 116 - server publish (new param - sourceID )When the socket of type publishes msg 
+        (116), it needs to pass sourceID. This means the library will need tobe updated to support 
+        this.we already have exclude_session_ID. The api will support source.ID. This is required for 
+        presence-channel.update in the server library.The present dbridges.channel.publish() function 
+        takes exclude_client_ID.Name will be changed to exclude_session_id[ *** exclude_client_id => 
+        change name => exclude_session_id *** 
+
+        We will introduce a new InParameter SOURCE_ID.
+        FINAL publish functionserver.library:-> 
+        dbridges.channel.publish(channelName, eventName, eventData,exclude_client_id) => 
+        change in parameter =>FINAL -> publish(channelName, eventName, eventData, exclude_session_id , source_id)
+        source_id goes into sourceid of "db structure" of emit
+
+file changes: channels.js dBMessageType.js, utils.js channel.js, dbridges.js
+
+class: channels.js
+    changed function: publish 
+                        1. renamed exclude_client_id to exclude_session_id
+                        2. add new parameter source_id
+
+
+enum:   dBMessageType.js 
+    changed enum: MessageTypes
+                        1. added PARTICIPANT_JOIN (17)
+                        2. PARTICIPANT_LEFT (18)
+
+
+enum:   util.js 
+    changed enum: systemEvents
+                        1. added PARTICIPANT_JOINED (dbridges:participant.joined)
+                        2. PARTICIPANT_LEFT (dbridges:participant.left)
+
+    changed function: updatedBNewtworkSC
+                        1. added new parameter source_id
+                        
+
+class: class dbridges
+    changed function: #IOMessage
+                        1. added new case MessageTypes.PARTICIPANT_JOIN to switch statement 
+                        2. in MessageTypes.PARTICIPANT_JOIN fired ('dbridges:participant.joined') event
+                        3. added new case MessageTypes.PARTICIPANT_LEFT to switch statement 
+                        4. 2. in MessageTypes.PARTICIPANT_LEFT fired ('dbridges:participant.LEFT') event
+
+
+
+
+Date 11-June-2021 1:30 AM 
+lib version: 1.5
+    message type version: 1.3 
+    message structure version: 1.2
+    description: 
+    Change Request 1
+            1. Reconnected event
+            2. allow system events binding in channelnbd class
+            3. bug try - catch for client socket null 
+            4. provide new function disconnect in dbridges class 
+            5. change file name from dbridge.js to dbridges.js and class name from dbridge to dbridges 
+            6. change system events names starting from dbridge to  dbridges
+            7. change dbridges class property from retiesAttempt to maxReconnectionRetries   
+    Change Request 2:
+            public properties of (dbridge.connectionstate object)
+            properties:
+                dbridge.connectionstate.state 
+                    (defualt: null)
+                    (available states: 
+                        "connected", 		
+                        "error" 		connect_error,  
+                        "connection_break"
+                        "disconnected", 
+                        "reconnecting" ,
+                        "connecting", 
+                        "reconnect_error", 
+                        "reconnect_failed"
+                "state_change",
+                        connecting 				connect_error
+                        connecting 				connected
+                        connected				disconnected
+                        connected				connection_break
+                        connection_break		reconnecting
+                        reconnecting			reconnect_error
+                        reconnect_error			reconnecting
+            connection state events:
+                "connected" 			socket.io established. This is a the main state ... 
+                                        dbridge connected() and disconnected() are main state        						
+                                        connected event will be fired -> 
+                                            dbridges.connect() --> start connection
+                                            phase I success, socket.connection = success, time connected > connection uptime
+                                            
+                                        when there is any issue in http (phase I) or socket connection or disconnection before uptime
+                                            connect_error will be fired 
+                                            
+                                                                
+                                                            
+                "disconnected" 			during the time of disconnection .this event will be generated only when all reconnect option is executed ...
+                                        This event will be fired along with reconnect_failed
+                                        disconnect will be fired only once ... 
+                                        either when reconnect_failed 
+                                        or socket error and auto.reconnection = false 
+                                        disconnect means all cleanup done 						
+                                        Technically this means that the object has been cleaned
+                                        
+                "connection_break"		when the socket connection is disconnected and reconnection-attempt is TRUE the linrary will fire this event.
+                                        This indicates that the connection between the app and the dbridges network is disconnected and the library will attempt reconnection.
+                                        connection break can give back - error() // this will be mainly socket error
+                "connecting"			This event is fired when the library is connecting to the dbridges network for the 1st time - 1st cycle	when dbridges.connect() is executed    									  
+                "reconnecting" 			This event is fired when the library is connecting to the dbridges network during a reconnection cycle.
+                "error" , 				This event will be generated when the library encounters error during connecting process. Here it will spit out the error
+                                        Rename - connect_error
+                                        This will return back error. This can be http error or socket error.
+                "reconnect_error"		This event will be generated when the library encounters error during reconnecting process. Here it will spit out the error
+                                        This will return back error. This can be http error or socket error.
+                "reconnect_failed"		This event will be generated when once all the reconnection attempts have been executed. Along with this "disconnected" event will get fired.
+                                        This will return back error. This can be http error or socket error.
+                "state_change",
+                        connecting 				connect_error
+                        connecting 				connected
+                        connected				disconnected
+                        connected				connection_break
+                        connection_break		reconnecting
+                        reconnecting			reconnect_error
+                        reconnect_error			reconnecting
+                        reconnecting			connected
+                        reconnecting			reconnect_failed
+                dbridge.connectionstate.isconnected     True / false
+                "reconnect_attempt"		Instead of event this can be a variable ... 
+                                        when connection = success reset this to 0
+                below not required
+                    dbridge.connectionstate.isdisconnected NOT REQUIRED
+                    dbridge.connectionstate.reconnecting   When connecting to dbridges network (with lifecycle > 1 )  
+                    dbridge.connectionstate.connecting	   when connecting to dbridges network 
+                    dbridge.connectionstate.error
+            binding 
+                dbridge.connectionstate.bind("connected" , ()=>{ ...
+                dbridge.connectionstate.bind("disconnected" , ()=>{ ...
+                dbridge.connectionstate.bind("connection_break" , (error)=>{ ...
+                dbridge.connectionstate.bind("connecting" , ()=>{ ...
+                dbridge.connectionstate.bind("reconnecting" , ()=>{ ...
+                dbridge.connectionstate.bind("connect_error" , (error)=>{ ...
+                dbridge.connectionstate.bind("reconnect_error" , (error)=>{ ...
+                dbridge.connectionstate.bind("reconnect_failed" , (error)=>{ ...
+                dbridge.connectionstate.bind("state_change", (data)=>{ ...
+                    data: {"previous": previous, "current": eventName}
+
+    Change Request 3:
+            dBridges.channel.*
+                Functions
+                    * dbridges.channel.isOnline("channelName")	Returns True / False
+                        the concept here is a channel needs to be online for publishing / receiving events
+                        The channel is marked offline when there is a network disconnection 
+                    * dbridges.channel.list()							returns list of channels json.objects
+                                                                    Channel-name,IsSubscribed - True/ false
+                    dbridges.channel.subscribe("channel-name")
+                        Returns and object on success
+                        raises an exception if conditions are not satisfied
+                            the dev needs to trap the exception
+                            the dev still needs to bind for success / failure to understand
+                            best practice 
+                                to use publish --> check if channel.isOnline
+                    dbridges.channel.unsubscribe("channel-name")
+                        raises an exception if conditions are not satisfied
+                            the dev needs to trap the exception
+                            the dev still needs to bind for success / failure to understand
+                    dbridges.channel.connect("channel-name")	
+                        raises an exception if conditions are not satisfied
+                            the dev needs to trap the exception
+                            the dev still needs to bind for success / failure to understand
+                            best practice 
+                                to use publish --> check if channel.isOnline
+                    dbridges.channel.disconnect("channel-name")	
+                        raises an exception if conditions are not satisfied
+                            the dev needs to trap the exception
+                            the dev still needs to bind for success / failure to understand
+                    dbridges.channel.publish(channel-name,event-name,event-data)
+                        only applicable for server library
+                        returns an exception in case of issue
+                            Internally lib checks if socket.connected
+                                can raise an exception 
+                    Remove
+                        dbridges.channel.isSubscribed("ChannelName")
+                        dbridges.channel.isConnected("channelName")
+                    events:
+                        system events:
+                            "dbridges:subscribe.success"	This event only at the time of subscription		
+                            "dbridges:subscribe.fail"		This event only at the time of subscription		
+                            "dbridges:connect.success"		This event only at the time of connection		
+                            "dbridges:connect.fail"			This event only at the time of connection		
+                            * "dbridges:channel.online"		When subscription / connection is success... 
+                                                            During initial channel.subscribe() / channel.connect()
+                                                            during channel re-subscription and re-connection
+                            * "dbridges:channel.offline"		when dbridges.connection.state("connection-break") all channels will be marked
+                                                            offline and events will be raised.
+                                                            post reconnection and on successful re-subscribe / re-connection the lib
+                                                            will mark the channels online.
+                            * "dbridges:channel.removed"	when the channel is unsubscribed / disconnected
+                                                            when channel.unsubscribe = success
+                                                            when channel.disconnect = success
+                                                            when reconnect_failed
+                                                                all channels and handles will be removed
+                                                                event will be fired       
+                            customer events:
+                                any
+                            binding 
+                                for system events:
+                                    dbridge.channel.bind("dbridges:subscribe.success" , (channelName)=>{ ...                    
+                                    dbridge.channel.bind("dbridges:subscribe.fail" , (channelName)=>{ ...
+                                    dbridge.channel.bind("dbridges:connect.success" , (channelName)=>{ ...
+                                    dbridge.channel.bind("dbridges:connect.fail" , (channelName)=>{ ...
+                                    dbridge.channel.bind("dbridges:channel.online" , (channelName)=>{ ...
+                                    dbridge.channel.bind("dbridges:channel.offline" , (channelName)=>{ ...
+                                    dbridge.channel.bind("dbridges:channel.removed" , (channelName)=>{ ...
+                                Custom Channel events
+                                    dbridge.channel.bind("eventName",(channelName,eventData,metadata))
+                RENAME - bind_global --> bind_all
+                                    dbridge.channel.bind_all((eventName, channelName, eventData, mataData)=>{ ...
+                                        This will also trap system events
+                    
+                Notes - post recinnection during re-subscribe / re-connection
+                    1. if the channel-name is marked for unsubscribe / disconnect 
+                    2. remove the entries from the map and send the below events 
+                    you will send channel.unsubscribe = success
+                                    channel.disconnect = success
+                                    dbridges:channel.removed        
+
+
+
+
+
+Date 11-June-2021 1:30 PM
+lib version: 1.4
+    message type version: 1.3 
+    message structure version: 1.2
+    description:    
+                required events smillar to socket.io version 3 for reconnection
+                Event: ‘reconnect_attempt’ attempt (Number) reconnection attempt number Fired upon an attempt to reconnect.
+                Event: ‘reconnect_error’ error (Object) error object Fired upon a reconnection attempt error.
+                Event: ‘reconnect_failed’ Fired when couldn’t reconnect within reconnectionAttempts.
+    Changes:
+    class
+        Connectionstate.js 
+            change properties:
+                private:
+                    old  #supportedEvents = ["error" , "connected" ,	"disconnected" , 
+                                            "reconnecting", "connecting", "state_change"]; 
+                    change #supportedEvents = ["error" , "connected" ,	"disconnected" , 
+                                                "reconnecting", "connecting", "state_change"
+                                                "reconnect_attempt", "reconnect_error", "reconnect_failed"]; 
+        states.js
+            change properties:
+                new add     RECONNECT_ATTEMPT: "reconnect_attempt",  RECONNECT_ERROR: "reconnect_error", RECONNECT_FAILED: "reconnect_failed"
+
+        channels.js
+            public function
+                new cleanUp_All: to clean all the binding before executing reconnect_failed event
+
+
+
+Date: 10-June-2021 7:00 PM
+    lib version: 1.3
+    message type version: 1.3 
+    message structure version: 1.2
+    description:    developer can enable / disable auto reconnection. by default auto reconnect will be true when a new dbridge object is created
+                    when ever the dbridge.connect() is executed, the library update variable dbridge.connection.lifecycle.new = true. | this means this is a new connection | any error during the connection, the handle is given back to calling function handler
+                    once the connection is success, the library will mark the dbridge.connection.lifecycle.new  = false
+                    when a disconnection happens
+                        if auto.reconnection = false | execute function dbridge.connection.cleanup | this will cleanup all subscription and bindings and will update dbridge.connection.lifecycle.new = true and give back the handler to the main calling function handler
+                        if auto.connection = true
+                        the library will execute auto connection
+                        if any issue is encounter and since dbridge.connection.lifecycle.new  = false the library will maintain its reconnection till it reaches max.retries
+                        once the max.retires is encounter, the library will execute dbridge.connection.cleanup and give back the handler
+    Changes:
+    class
+        dbridge.js
+        New properties 
+                public:
+                    autoReconnect (type: boolean , default: true)
+            change Member function 
+                private:
+                    #IOEventReconnect: handles client socket disconnect event 
+                        if autoReconnect = false | execute function dbridge.connection.cleanup | this will cleanup all subscription and bindings and will update dbridge.connection.lifecycle.new = true and give back the handler to the main calling function handler
+                        if autoReconnect = true
+                        the library will execute auto connection
+                        if any issue is encounter and since dbridge.connection.lifecycle.new  = false the library will maintain its reconnection till it reaches max.retries
+                        once the max.retires is encounter, the library will execute dbridge.connection.cleanup and give back the handler
+
+        connectionState.js
+            New properties 
+                private 
+                    #newLifeCycle (type: boolean , default: true)
+            change Member function 
+                private:
+                public:
+                    set_newLifeCycle
+                    get_newLifeCycle
+
+
+Date: 10-June-2021 4:30 PM
+    lib version: 1.3
+    message type version: 1.3 
+    message structure version: 1.2
+    description: based on deisconnect reason. reconnect will be executed.
+                    "io server disconnect":   The server has forcefully disconnected the socket with socket.disconnect()
+                    "io client disconnect":   The socket was manually disconnected using socket.disconnect()
+                    "ping timeout":   The server did not send a PING within the pingInterval + pingTimeout range
+                    "transport close":    The connection was closed (example: the user has lost connection, or the network was changed from WiFi to 4G)
+                    "transport error":    The connection has encountered an error (example: the server was killed during a HTTP long-polling cycle)
+                    reconnect will be excuted in case of "ping timeout" ,  "transport close" and "transport error"
+
+    Changes:
+    class
+        dbridge.js
+               #IOEventReconnect: handles client socket disconnect event 
+                             before reconnect check the reason of disconnect 
+                             if the reason is "io server disconnect" or "io client disconnect"
+                             perform the cleanup and exit the apllication 
+                             if the reason is "ping timeout" or "transport close" or "transport error"
+                             attempt for reconnect
+
+
+Date: 10-June-2021
+    lib version: 1.2
+    message type version: 1.3 
+    message structure version: 1.2
+    description: to support reconnection with delay, using logic from 
+                 https://github.com/pladaria/reconnecting-websocket
+Changes:
+    class
+        dbridge.js
+            New properties 
+                maxReconnectionDelay: max delay in ms between reconnections (default: 10000)
+	            minReconnectionDelay:  min delay in ms between reconnections (default: 1000 + Math.random() * 4000)
+	            reconnectionDelayGrowFactor:  how fast the reconnection delay grows (default: 1.3)
+	            minUptime: min time in ms to consider connection as stable (default: 5000);
+	            connectionTimeout: socket.io client connection timeout before a connect_error and connect_timeout events are emitted (default: 20000)
+	            maxRetries: maximum number of retries (default: 100)
+                #retryCount: retry count 
+            New Member functions
+                private:
+                    #acceptOpen: it sends the connected event after minUptime ms waiting time,
+                    #getNextDelay: calculate the time required to wait before reconnecting 
+                    #wait: perform waiting before caalling/executing the reconnect function
+                    #reconnect: (same as connect function but with delay)
+                public:
+            change Member function 
+                private:
+                    #IOMessage: handles "db" event
+                             on system message(0) add the add settimeout for executing 
+                             #acceptOpen function after minUptime
+                             assign the settimeout handle to #uptimeTimeout
+                    #IOEventReconnect: handles client socket disconnect event 
+                             on disconnect check if the #uptimeTimeout is not null 
+                             using clearTimeout function clear the #uptimeTimeout handle
+                             after performing cleanup call #reconnect
+        
+
+            
+
